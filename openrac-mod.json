@@ -1,0 +1,29 @@
+{
+  "format": 2,
+  "id": "rac2-wrench-swap",
+  "name": "Wrench Swap (Going Commando)",
+  "version": "0.1.6",
+  "author": "Slim Cognito",
+  "description": "Adds Wrench Swap to the pause menu's Options: switch between the Omniwrench 8000, 10000 and 12000 once you have found them (or from the start with Cheat Mode).",
+  "license": "MIT",
+  "type": "native",
+  "api": "1.16",
+  "games": {
+    "rac2": [
+      "ntsc"
+    ]
+  },
+  "plugin": {
+    "windows-x86_64": "lib/windows-x86_64/wrench_swap.dll"
+  },
+  "multiplayer": "solo",
+  "settings": [
+    {
+      "key": "cheat_mode",
+      "name": "Cheat Mode",
+      "type": "bool",
+      "default": false,
+      "description": "Normal games: all three Omniwrenches selectable from the start, kept from level to level. Challenge mode is unchanged."
+    }
+  ]
+}
