@@ -2,7 +2,7 @@
   "format": 2,
   "id": "rac2-wrench-swap",
   "name": "Wrench Swap (Going Commando)",
-  "version": "0.1.6",
+  "version": "0.2.1",
   "author": "Slim Cognito",
   "description": "Adds Wrench Swap to the pause menu's Options: switch between the Omniwrench 8000, 10000 and 12000 once you have found them (or from the start with Cheat Mode).",
   "license": "MIT",
@@ -10,7 +10,9 @@
   "api": "1.16",
   "games": {
     "rac2": [
-      "ntsc"
+      "ntsc",
+      "ntsc2",
+      "pal"
     ]
   },
   "plugin": {

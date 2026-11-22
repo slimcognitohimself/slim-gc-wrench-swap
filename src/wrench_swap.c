@@ -1,4 +1,5 @@
-/* Wrench Swap: a native OpenRAC mod for Ratchet & Clank: Going Commando (NTSC-U v1.01).
+/* Wrench Swap: a native OpenRAC mod for Ratchet & Clank: Going Commando (NTSC-U v1.01, NTSC-U v2.00
+ * Greatest Hits and PAL).
  *
  * Adds "Wrench Swap" to the pause menu's Options page. Its "Omniwrench" setting switches
  * between the wrenches you have found: 8000 (the start), 10000 (Tabora) and 12000 (Aranos
@@ -31,16 +32,47 @@
 #include "openrac/openrac_mod.h"
 #include "addrs.h"
 
-OPENRAC_MOD_DEFINE("rac2-wrench-swap", "0.1.6")
+OPENRAC_MOD_DEFINE("rac2-wrench-swap", "0.2.1")
 
-/* Fixed addresses (below 0x1A7C80: the same in every level program). */
-#define A_MAP            0x1A79F0u /* s32 current level */
-#define A_GAME_MODE      0x1A8F00u /* s32 in levels: 0 play, 2 scene, 3 pause, 6 loading */
-#define A_HERO_CHAR      0x18C0D4u /* u8: 0 Ratchet, 1 Clank */
-#define A_HERO_MOBY      0x18C0B0u /* u32: the moby the player controls */
-#define A_WRENCH_RECORD  0x139572u /* u8: g_item_slot_to_record[10] */
-#define A_CHALLENGE      0x1A7A0Au /* u8: set in challenge mode (flag_is_byte_set) */
-#define A_WEAPON_CHANNEL 0x1A72C0u /* s32: the wrench look loaded now */
+/* The disc's addresses: its fixed ones (the same in every level program) and its tables of
+ * per-level functions (addrs.h). PAL's were found by matching its code against NTSC-U's; v2.00's
+ * are rac2-decomp's (usa-v2, us2). Each was checked against OpenRAC's own build for its disc. */
+typedef struct disc_addrs {
+    const char* key;          /* OpenRAC's disc id */
+    uint32_t map;             /* s32 current level */
+    uint32_t game_mode;       /* s32 in levels: 0 play, 2 scene, 3 pause, 6 loading */
+    uint32_t hero_char;       /* u8: 0 Ratchet, 1 Clank */
+    uint32_t hero_moby;       /* u32: the moby the player controls */
+    uint32_t wrench_record;   /* u8: g_item_slot_to_record[10] */
+    uint32_t challenge;       /* u8: set in challenge mode (flag_is_byte_set) */
+    uint32_t weapon_channel;  /* s32: the wrench look loaded now */
+    uint32_t planets;         /* u8 a level: on the ship's map (Planet_Unlock) */
+    const uint32_t *seek, *loadpack, *gspacket, *refresh;
+} disc_addrs;
+
+static const disc_addrs DISC_NTSC = {
+    "ntsc", 0x1A79F0u, 0x1A8F00u, 0x18C0D4u, 0x18C0B0u, 0x139572u, 0x1A7A0Au, 0x1A72C0u, 0x1A7BC8u,
+    ADDR_SEEK_NTSC, ADDR_LOADPACK_NTSC, ADDR_GSPACKET_NTSC, ADDR_REFRESH_NTSC};
+static const disc_addrs DISC_PAL = {
+    "pal", 0x1A7A78u, 0x1A8F80u, 0x18C154u, 0x18C130u, 0x1395F2u, 0x1A7A92u, 0x1A7340u, 0x1A7C50u,
+    ADDR_SEEK_PAL, ADDR_LOADPACK_PAL, ADDR_GSPACKET_PAL, ADDR_REFRESH_PAL};
+static const disc_addrs DISC_NTSC2 = {
+    "ntsc2", 0x1A79F8u, 0x1A8F00u, 0x18C0D4u, 0x18C0B0u, 0x139572u, 0x1A7A12u, 0x1A72C0u, 0x1A7BD0u,
+    ADDR_SEEK_NTSC2, ADDR_LOADPACK_NTSC2, ADDR_GSPACKET_NTSC2, ADDR_REFRESH_NTSC2};
+static const disc_addrs* g_disc = &DISC_NTSC;
+
+#define A_MAP            (g_disc->map)
+#define A_GAME_MODE      (g_disc->game_mode)
+#define A_HERO_CHAR      (g_disc->hero_char)
+#define A_HERO_MOBY      (g_disc->hero_moby)
+#define A_WRENCH_RECORD  (g_disc->wrench_record)
+#define A_CHALLENGE      (g_disc->challenge)
+#define A_WEAPON_CHANNEL (g_disc->weapon_channel)
+#define A_PLANETS        (g_disc->planets)
+#define ADDR_SEEK        (g_disc->seek)
+#define ADDR_LOADPACK    (g_disc->loadpack)
+#define ADDR_GSPACKET    (g_disc->gspacket)
+#define ADDR_REFRESH     (g_disc->refresh)
 
 #define HERO_CLASS 0x47           /* g_class_slot_indices[0x47]: the class whose header is relocated */
 #define MAX_CHAIN 8
@@ -178,7 +210,6 @@ static void load_progress(void* user) {
 }
 
 /* Planets on the ship's map (Planet_Unlock's bytes, one a level). */
-#define A_PLANETS 0x1A7BC8u
 #define LEVEL_DOBBO 9
 #define LEVEL_GORN 15
 
@@ -451,6 +482,11 @@ static void read_settings(void* user) {
 
 /* --- loading ----------------------------------------------------------------------------- */
 
+static int same(const char* a, const char* b) {
+    while (*a && *a == *b) a++, b++;
+    return *a == *b;
+}
+
 OPENRAC_MOD_EXPORT int openrac_mod_load(const openrac_api* api, openrac_mod* mod) {
     int n;
     g_api = api;
@@ -461,10 +497,19 @@ OPENRAC_MOD_EXPORT int openrac_mod_load(const openrac_api* api, openrac_mod* mod
         return 1;
     }
     if (!api->game || api->game[0] != 'r' || api->game[3] != '2' ||
-        !api->version || api->version[0] != 'n' || api->version[4] != 0) {
-        api->fail(mod, "only for Going Commando NTSC-U v1.01 (\"ntsc\")");
+        !api->version) {
+        api->fail(mod, "only for Going Commando: NTSC-U v1.01, v2.00 or PAL");
         return 1;
     }
+    if (same(api->version, "ntsc")) g_disc = &DISC_NTSC;
+    else if (same(api->version, "pal")) g_disc = &DISC_PAL;
+    else if (same(api->version, "ntsc2")) g_disc = &DISC_NTSC2;
+    else {
+        api->fail(mod, "only for Going Commando: NTSC-U v1.01, v2.00 or PAL");
+        return 1;
+    }
+    LOG(g_disc == &DISC_PAL ? "PAL disc (SCES_516.07)"
+        : g_disc == &DISC_NTSC2 ? "NTSC-U Greatest Hits disc (v2.00)" : "NTSC-U disc (v1.01)");
     g_page = api->ui_page(mod, 0, on_page, 0);
     if (g_page < 0 || api->ui_pause_item(mod, "Wrench Swap", g_page) != OPENRAC_HOOK_OK) {
         api->fail(mod, "could not add Wrench Swap to the pause menu (another mod may use its two places)");

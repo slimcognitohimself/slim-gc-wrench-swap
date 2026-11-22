@@ -3,6 +3,3 @@
 *.zip binary
 *.png binary
 *.glb binary
-*.dll binary
-*.so binary
-*.dylib binary
